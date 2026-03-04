@@ -11,13 +11,13 @@ FROM node:20-alpine
 WORKDIR /app
 
 COPY server/package.json ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
-COPY server/index.js ./index.js
+COPY server/index.js ./server/index.js
 COPY --from=build /app/dist ./dist
 
+ENV DATA_DIR=/app/data
 RUN mkdir -p /app/data
-VOLUME /app/data
 
 EXPOSE 3000
-CMD ["node", "index.js"]
+CMD ["node", "server/index.js"]

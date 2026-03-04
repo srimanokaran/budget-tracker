@@ -14,8 +14,8 @@ dist-ssr
 
 # Data and sensitive files
 server/data/
-server/index.js
 *.csv
+fly.md
 
 # Editor directories and files
 .vscode/*

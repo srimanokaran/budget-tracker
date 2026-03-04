@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
+import { PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine } from "recharts";
 
 const LIGHT = {
   bg: "#faf9f7", card: "#fff", text: "#1a1a1a", textSecondary: "#999",
@@ -77,8 +77,21 @@ export default function BudgetTracker() {
 
   const loadTrends = useCallback(async () => {
     try {
-      const res = await fetch("/api/transactions/trends");
-      const rows = await res.json();
+      const [trendRes, totalsRes] = await Promise.all([
+        fetch("/api/transactions/trends"),
+        fetch("/api/transactions/monthly-totals"),
+      ]);
+      const rows = await trendRes.json();
+      const totalsRows = await totalsRes.json();
+
+      // Build income/expense totals per month
+      const monthTotals = {};
+      for (const r of totalsRows) {
+        if (!monthTotals[r.month]) monthTotals[r.month] = { income: 0, expense: 0 };
+        if (r.type === "income") monthTotals[r.month].income += r.total;
+        else if (r.type === "expense") monthTotals[r.month].expense += r.total;
+      }
+
       const months = {};
       const cats = new Set();
       for (const r of rows) {
@@ -86,6 +99,17 @@ export default function BudgetTracker() {
         months[r.month][r.category] = r.total;
         cats.add(r.category);
       }
+
+      // Add savings rate to each month
+      for (const [month, data] of Object.entries(months)) {
+        const t = monthTotals[month];
+        if (t && t.income > 0) {
+          data["Savings Rate"] = Math.round(((t.income - t.expense) / t.income) * 100);
+        } else {
+          data["Savings Rate"] = 0;
+        }
+      }
+
       const sorted = Object.values(months).sort((a, b) => a.month.localeCompare(b.month));
       setTrendsData(sorted);
       setTrendsCategories(cats);
@@ -785,19 +809,22 @@ export default function BudgetTracker() {
             <div style={{ height: "60vh" }}>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={trendsData.filter(d => trendsMonthFilter.has(d.month))}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={t.gridStroke} vertical={false} />
-                  <XAxis dataKey="month" tick={{ fontSize: 10, fill: t.textTertiary }} axisLine={false} tickLine={false}
+                  <CartesianGrid yAxisId="right" vertical={false} stroke={dark ? "#999" : "#888"} strokeWidth={1} />
+                  <XAxis dataKey="month" tick={{ fontSize: 12, fill: t.text, fontWeight: 600 }} axisLine={false} tickLine={false}
                     tickFormatter={m => { const [y, mo] = m.split("-"); return `${MONTHS[Number(mo) - 1]} ${y.slice(2)}`; }} />
-                  <YAxis tick={{ fontSize: 10, fill: t.textFaint }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />
+                  <YAxis yAxisId="left" tick={{ fontSize: 12, fill: t.text, fontWeight: 600 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />
+                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12, fill: t.text, fontWeight: 600 }} axisLine={false} tickLine={false} tickFormatter={v => `${v}%`} domain={[0, 100]} ticks={[0, 20, 40, 60, 80, 100]} />
+                  <ReferenceLine yAxisId="right" y={0} stroke="#e94560" strokeWidth={2} label={{ value: "0%", position: "right", fill: "#e94560", fontSize: 10, fontWeight: 700 }} />
                   <Tooltip
                     contentStyle={{ borderRadius: 10, border: "none", boxShadow: t.tooltipShadow, fontSize: 12, background: t.card, color: t.text }}
                     labelFormatter={m => { const [y, mo] = m.split("-"); return `${MONTHS[Number(mo) - 1]} ${y}`; }}
-                    formatter={(v) => formatCurrency(v)}
+                    formatter={(v, name) => name === "Savings Rate" ? `${v}%` : formatCurrency(v)}
                   />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} />
                   {CATEGORIES.filter(c => trendsCategories.has(c.name) && trendsCatFilter.has(c.name)).map(c => (
-                    <Line key={c.name} type="monotone" dataKey={c.name} stroke={c.color} strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                    <Line key={c.name} yAxisId="left" type="monotone" dataKey={c.name} stroke={c.color} strokeWidth={2} dot={{ r: 3 }} connectNulls />
                   ))}
+                  <Line yAxisId="right" type="monotone" dataKey="Savings Rate" stroke="#1b998b" strokeWidth={2} strokeDasharray="6 3" dot={{ r: 3 }} connectNulls />
                 </LineChart>
               </ResponsiveContainer>
             </div>
