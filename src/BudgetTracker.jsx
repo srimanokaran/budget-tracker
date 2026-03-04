@@ -24,16 +24,16 @@ const DARK = {
 };
 
 const CATEGORIES = [
-  { name: "Housing", color: "#1a1a2e", icon: "🏠" },
-  { name: "Groceries", color: "#2d6a4f", icon: "🛒" },
+  { name: "Housing", color: "#7c83ff", icon: "🏠" },
+  { name: "Groceries", color: "#4ade80", icon: "🛒" },
   { name: "Eating Out", color: "#e94560", icon: "🍔" },
-  { name: "Transport", color: "#0f3460", icon: "🚗" },
-  { name: "Subscriptions", color: "#533483", icon: "🔄" },
-  { name: "Entertainment", color: "#e07c24", icon: "🎬" },
-  { name: "Shopping", color: "#16213e", icon: "🛍" },
-  { name: "Health", color: "#2d6a4f", icon: "💊" },
+  { name: "Transport", color: "#38bdf8", icon: "🚗" },
+  { name: "Subscriptions", color: "#a78bfa", icon: "🔄" },
+  { name: "Entertainment", color: "#f59e0b", icon: "🎬" },
+  { name: "Shopping", color: "#f472b6", icon: "🛍" },
+  { name: "Health", color: "#34d399", icon: "💊" },
   { name: "Savings", color: "#1b998b", icon: "💰" },
-  { name: "Other", color: "#6c757d", icon: "📦" },
+  { name: "Other", color: "#94a3b8", icon: "📦" },
 ];
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -63,6 +63,7 @@ export default function BudgetTracker() {
   const [trendsData, setTrendsData] = useState([]);
   const [trendsCategories, setTrendsCategories] = useState(new Set());
   const [trendsCatFilter, setTrendsCatFilter] = useState(new Set());
+  const [trendsMonthFilter, setTrendsMonthFilter] = useState(new Set());
   const [dark, setDark] = useState(false);
 
   // Load transactions for the current month
@@ -85,9 +86,11 @@ export default function BudgetTracker() {
         months[r.month][r.category] = r.total;
         cats.add(r.category);
       }
-      setTrendsData(Object.values(months).sort((a, b) => a.month.localeCompare(b.month)));
+      const sorted = Object.values(months).sort((a, b) => a.month.localeCompare(b.month));
+      setTrendsData(sorted);
       setTrendsCategories(cats);
       setTrendsCatFilter(prev => prev.size === 0 ? cats : prev);
+      setTrendsMonthFilter(prev => prev.size === 0 ? new Set(sorted.map(d => d.month)) : prev);
     } catch {}
   }, []);
 
@@ -279,7 +282,7 @@ export default function BudgetTracker() {
       color: t.text,
       opacity: fadeIn ? 1 : 0,
       transition: "opacity 0.5s ease, background 0.3s ease, color 0.3s ease",
-      maxWidth: 520,
+      maxWidth: 800,
       margin: "0 auto",
       padding: "24px 16px 100px",
     },
@@ -708,6 +711,19 @@ export default function BudgetTracker() {
         <div style={s.card}>
           <div style={s.sectionTitle}>Monthly Spending by Category</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+            {(() => {
+              const allSelected = CATEGORIES.filter(c => trendsCategories.has(c.name)).every(c => trendsCatFilter.has(c.name));
+              return (
+                <button onClick={() => setTrendsCatFilter(allSelected ? new Set() : new Set(trendsCategories))} style={{
+                  padding: "5px 10px", borderRadius: 8, fontSize: 10, fontWeight: 700, cursor: "pointer",
+                  border: `2px solid ${t.catBtnBorder}`,
+                  background: t.catBtnBg,
+                  color: t.catBtnText,
+                }}>
+                  {allSelected ? "None" : "All"}
+                </button>
+              );
+            })()}
             {CATEGORIES.filter(c => trendsCategories.has(c.name)).map(c => {
               const active = trendsCatFilter.has(c.name);
               return (
@@ -726,14 +742,49 @@ export default function BudgetTracker() {
               );
             })}
           </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+            {(() => {
+              const allMonths = new Set(trendsData.map(d => d.month));
+              const allSelected = trendsData.every(d => trendsMonthFilter.has(d.month));
+              return (
+                <button onClick={() => setTrendsMonthFilter(allSelected ? new Set() : allMonths)} style={{
+                  padding: "5px 10px", borderRadius: 8, fontSize: 10, fontWeight: 700, cursor: "pointer",
+                  border: `2px solid ${t.catBtnBorder}`,
+                  background: t.catBtnBg,
+                  color: t.catBtnText,
+                }}>
+                  {allSelected ? "None" : "All"}
+                </button>
+              );
+            })()}
+            {trendsData.map(d => {
+              const active = trendsMonthFilter.has(d.month);
+              const [y, mo] = d.month.split("-");
+              const label = `${MONTHS[Number(mo) - 1]} ${y.slice(2)}`;
+              return (
+                <button key={d.month} onClick={() => setTrendsMonthFilter(prev => {
+                  const next = new Set(prev);
+                  if (active) next.delete(d.month); else next.add(d.month);
+                  return next;
+                })} style={{
+                  padding: "5px 10px", borderRadius: 8, fontSize: 10, fontWeight: 700, cursor: "pointer",
+                  border: active ? `2px solid ${dark ? "#e8e8ea" : "#1a1a1a"}` : `2px solid ${t.catBtnBorder}`,
+                  background: active ? (dark ? "#e8e8ea20" : "#1a1a1a12") : t.catBtnBg,
+                  color: active ? t.text : t.catBtnText,
+                }}>
+                  {label}
+                </button>
+              );
+            })}
+          </div>
           {trendsData.length === 0 ? (
             <div style={{ textAlign: "center", padding: "40px 0", color: t.textFaint, fontSize: 13 }}>
               No data yet
             </div>
           ) : (
-            <div style={{ height: 320 }}>
+            <div style={{ height: "60vh" }}>
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={trendsData}>
+                <LineChart data={trendsData.filter(d => trendsMonthFilter.has(d.month))}>
                   <CartesianGrid strokeDasharray="3 3" stroke={t.gridStroke} vertical={false} />
                   <XAxis dataKey="month" tick={{ fontSize: 10, fill: t.textTertiary }} axisLine={false} tickLine={false}
                     tickFormatter={m => { const [y, mo] = m.split("-"); return `${MONTHS[Number(mo) - 1]} ${y.slice(2)}`; }} />
