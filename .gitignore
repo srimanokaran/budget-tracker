@@ -15,7 +15,7 @@ dist-ssr
 # Data and sensitive files
 server/data/
 *.csv
-fly.md
+docs/
 
 # Editor directories and files
 .vscode/*

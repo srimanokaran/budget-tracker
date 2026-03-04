@@ -23,6 +23,15 @@ const DARK = {
   statsText: "#999", strongText: "#e8e8ea",
 };
 
+async function apiFetch(url, options) {
+  const res = await fetch(url, options);
+  if (res.status === 401) {
+    window.location.href = "/login";
+    throw new Error("Unauthorized");
+  }
+  return res;
+}
+
 const CATEGORIES = [
   { name: "Housing", color: "#7c83ff", icon: "🏠" },
   { name: "Groceries", color: "#4ade80", icon: "🛒" },
@@ -69,7 +78,7 @@ export default function BudgetTracker() {
   // Load transactions for the current month
   const loadMonth = useCallback(async (month) => {
     try {
-      const res = await fetch(`/api/transactions?month=${encodeURIComponent(month)}`);
+      const res = await apiFetch(`/api/transactions?month=${encodeURIComponent(month)}`);
       const rows = await res.json();
       setEntries(rows);
     } catch {}
@@ -78,8 +87,8 @@ export default function BudgetTracker() {
   const loadTrends = useCallback(async () => {
     try {
       const [trendRes, totalsRes] = await Promise.all([
-        fetch("/api/transactions/trends"),
-        fetch("/api/transactions/monthly-totals"),
+        apiFetch("/api/transactions/trends"),
+        apiFetch("/api/transactions/monthly-totals"),
       ]);
       const rows = await trendRes.json();
       const totalsRows = await totalsRes.json();
@@ -122,12 +131,12 @@ export default function BudgetTracker() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/api/goals");
+        const res = await apiFetch("/api/goals");
         const g = await res.json();
         if (g) setGoals(g);
       } catch {}
       try {
-        const res = await fetch("/api/settings/theme");
+        const res = await apiFetch("/api/settings/theme");
         const { value } = await res.json();
         if (value === "dark") setDark(true);
       } catch {}
@@ -149,7 +158,7 @@ export default function BudgetTracker() {
   const toggleDark = () => {
     const next = !dark;
     setDark(next);
-    fetch("/api/settings/theme", {
+    apiFetch("/api/settings/theme", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ value: next ? "dark" : "light" }),
@@ -203,7 +212,7 @@ export default function BudgetTracker() {
       month: currentMonth,
     };
     try {
-      await fetch("/api/transactions", {
+      await apiFetch("/api/transactions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(entry),
@@ -216,7 +225,7 @@ export default function BudgetTracker() {
 
   const deleteEntry = async (id) => {
     try {
-      await fetch(`/api/transactions/${id}`, { method: "DELETE" });
+      await apiFetch(`/api/transactions/${id}`, { method: "DELETE" });
       setEntries(prev => prev.filter(e => e.id !== id));
     } catch {}
   };
@@ -230,7 +239,7 @@ export default function BudgetTracker() {
     if (entry.type === "income" && newType === "expense") newAmount = -Math.abs(entry.amount);
     else if (entry.type === "expense" && newType === "income") newAmount = Math.abs(entry.amount);
     try {
-      await fetch(`/api/transactions/${id}`, {
+      await apiFetch(`/api/transactions/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type: newType, category, amount: newAmount }),
@@ -243,7 +252,7 @@ export default function BudgetTracker() {
   const saveGoals = async () => {
     if (editGoals) {
       try {
-        await fetch("/api/goals", {
+        await apiFetch("/api/goals", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(editGoals),
@@ -260,7 +269,7 @@ export default function BudgetTracker() {
     if (!file) return;
     const text = await file.text();
     try {
-      const res = await fetch("/api/import/csv", {
+      const res = await apiFetch("/api/import/csv", {
         method: "POST",
         headers: { "Content-Type": "text/plain" },
         body: text,
