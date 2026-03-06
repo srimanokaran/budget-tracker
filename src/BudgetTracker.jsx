@@ -98,6 +98,7 @@ export default function BudgetTracker() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetching data on month change
     if (loaded) loadMonth(currentMonth);
   }, [currentMonth, loaded, loadMonth]);
 

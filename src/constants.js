@@ -72,7 +72,7 @@ export function getStyles(dark) {
     sectionTitle: {
       fontSize: 10, fontWeight: 700, letterSpacing: 2.5, textTransform: "uppercase", color: t.textMuted, marginBottom: 14, marginTop: 8,
     },
-    progressBar: (pct, color) => ({
+    progressBar: (_pct, _color) => ({
       height: 8, borderRadius: 8, background: t.progressBg,
       position: "relative", overflow: "hidden", marginTop: 8, marginBottom: 4,
     }),
