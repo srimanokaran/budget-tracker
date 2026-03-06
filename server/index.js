@@ -441,6 +441,10 @@ if (existsSync(DIST_DIR)) {
   });
 }
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Budget tracker server running on http://0.0.0.0:${PORT}`);
-});
+if (process.env.NODE_ENV !== "test") {
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Budget tracker server running on http://0.0.0.0:${PORT}`);
+  });
+}
+
+export { app, db };
