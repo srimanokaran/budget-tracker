@@ -63,9 +63,6 @@ export default function Insights({ currentMonth, monthLabel, dark, insightsState
     <div>
       <div style={s.card}>
         <p style={s.sectionTitle}>AI Financial Insights</p>
-        <p style={{ fontSize: 13, color: t.textSecondary, marginBottom: 16, lineHeight: 1.5 }}>
-          Ask anything about your finances for {monthLabel}. Your transaction data is included automatically.
-        </p>
         <div style={{ display: "flex", gap: 8 }}>
           <input
             type="text"
