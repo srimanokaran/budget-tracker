@@ -461,9 +461,9 @@ app.get("/api/insights", async (req, res) => {
   const income = transactions.filter(t => t.type === "income").reduce((s, t) => s + t.amount, 0);
   const expenses = transactions.filter(t => t.type === "expense").reduce((s, t) => s + t.amount, 0);
 
-  const prompt = `Analyze my finances for ${month}.
+  const customQuestion = req.query.question;
 
-CURRENT MONTH (${month}):
+  const financialContext = `CURRENT MONTH (${month}):
 Income: $${income.toFixed(2)} | Expenses: $${expenses.toFixed(2)} | Net: $${(income - expenses).toFixed(2)}
 
 Transactions:
@@ -477,6 +477,10 @@ ${categoryTrends.map(r => `${r.month} ${r.category}: $${r.total.toFixed(2)}`).jo
 
 GOALS: Monthly budget $${goals.monthly_budget}, Monthly savings target $${goals.monthly_savings}`;
 
+  const prompt = customQuestion
+    ? `Here is my financial data:\n\n${financialContext}\n\nMy question: ${customQuestion}`
+    : `Analyze my finances for ${month}.\n\n${financialContext}`;
+
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
@@ -487,7 +491,9 @@ GOALS: Monthly budget $${goals.monthly_budget}, Monthly savings target $${goals.
     const stream = anthropic.messages.stream({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 1024,
-      system: `You are a personal financial analyst. Analyze the user's spending data and provide insights in these sections:
+      system: customQuestion
+        ? `You are a personal financial analyst. The user will provide their financial data and ask a specific question. Answer their question using the data provided. Be specific with numbers. Use AUD currency. Keep it concise.`
+        : `You are a personal financial analyst. Analyze the user's spending data and provide insights in these sections:
 1. **Financial Health Summary** — one-sentence overview
 2. **Spending Patterns** — notable trends or unusual spending
 3. **Budget Adherence** — how they're tracking against their budget goal

@@ -6,18 +6,19 @@ export default function Insights({ currentMonth, monthLabel, dark }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [done, setDone] = useState(false);
+  const [question, setQuestion] = useState("");
 
   const t = dark ? DARK : LIGHT;
   const s = getStyles(dark);
 
-  const analyze = async () => {
+  const streamResponse = async (url) => {
     setText("");
     setError(null);
     setLoading(true);
     setDone(false);
 
     try {
-      const res = await fetch(`/api/insights?month=${encodeURIComponent(currentMonth)}`);
+      const res = await fetch(url);
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Request failed" }));
         throw new Error(err.error || `HTTP ${res.status}`);
@@ -58,6 +59,16 @@ export default function Insights({ currentMonth, monthLabel, dark }) {
     }
   };
 
+  const analyze = () => {
+    streamResponse(`/api/insights?month=${encodeURIComponent(currentMonth)}`);
+  };
+
+  const askQuestion = () => {
+    if (!question.trim()) return;
+    streamResponse(`/api/insights?month=${encodeURIComponent(currentMonth)}&question=${encodeURIComponent(question.trim())}`);
+    setQuestion("");
+  };
+
   return (
     <div>
       <div style={s.card}>
@@ -96,6 +107,34 @@ export default function Insights({ currentMonth, monthLabel, dark }) {
             {loading && <span style={{ animation: "blink 1s step-end infinite", color: t.textSecondary }}>|</span>}
           </div>
           <style>{`@keyframes blink { 50% { opacity: 0; } }`}</style>
+        </div>
+      )}
+
+      {done && (
+        <div style={s.card}>
+          <p style={s.sectionTitle}>Ask a Question</p>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              type="text"
+              value={question}
+              onChange={e => setQuestion(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && askQuestion()}
+              placeholder="e.g. How can I reduce grocery spending?"
+              style={{ ...s.input, flex: 1 }}
+            />
+            <button
+              onClick={askQuestion}
+              disabled={!question.trim()}
+              style={{
+                ...s.btn(!!question.trim()),
+                width: "auto",
+                padding: "14px 20px",
+                opacity: question.trim() ? 1 : 0.5,
+              }}
+            >
+              Ask
+            </button>
+          </div>
         </div>
       )}
     </div>
