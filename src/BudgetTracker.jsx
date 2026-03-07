@@ -5,6 +5,7 @@ import AddEntry from "./components/AddEntry";
 import History from "./components/History";
 import Trends from "./components/Trends";
 import Goals from "./components/Goals";
+import Insights from "./components/Insights";
 
 function getMonthKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
@@ -289,7 +290,7 @@ export default function BudgetTracker() {
 
       {/* Tab Bar */}
       <div style={{ display: "flex", gap: 6, marginBottom: 24, background: t.tabBg, borderRadius: 14, padding: 4 }}>
-        {[["dashboard","Overview"],["add","+ Add"],["history","History"],["trends","Trends"],["goals","Goals"]].map(([v, label]) => (
+        {[["dashboard","Overview"],["add","+ Add"],["history","History"],["trends","Trends"],["goals","Goals"],["insights","AI"]].map(([v, label]) => (
           <button key={v} style={s.tab(view === v)} onClick={() => { setView(v); if (v !== "history") { setFilterCategory(null); setFilterType(null); } if (v === "goals") setEditGoals({...goals}); if (v === "trends") loadTrends(); }}>
             {label}
           </button>
@@ -323,6 +324,10 @@ export default function BudgetTracker() {
       {view === "goals" && (
         <Goals goals={goals} editGoals={editGoals} setEditGoals={setEditGoals}
           saveGoals={saveGoals} dark={dark} />
+      )}
+
+      {view === "insights" && (
+        <Insights currentMonth={currentMonth} monthLabel={monthLabel} dark={dark} />
       )}
     </div>
   );

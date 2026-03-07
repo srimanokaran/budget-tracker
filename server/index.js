@@ -1,6 +1,7 @@
 import express from "express";
 import crypto from "crypto";
 import Database from "better-sqlite3";
+import Anthropic from "@anthropic-ai/sdk";
 import { existsSync, mkdirSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
@@ -9,6 +10,8 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const ALLOWED_EMAIL = process.env.ALLOWED_EMAIL;
 const SESSION_SECRET = process.env.SESSION_SECRET || "fallback-dev-secret";
+
+const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -431,6 +434,83 @@ app.post("/api/import/csv", (req, res) => {
 
   run();
   res.json({ imported, skipped });
+});
+
+// AI Insights
+app.get("/api/insights", async (req, res) => {
+  if (!anthropic) return res.status(503).json({ error: "AI not configured" });
+
+  const month = req.query.month;
+  if (!month) return res.status(400).json({ error: "month query param required" });
+
+  // Gather context
+  const transactions = db.prepare(
+    "SELECT type, category, amount, description, date FROM transactions WHERE month = ? ORDER BY date DESC LIMIT 50"
+  ).all(month);
+
+  const monthlyTotals = db.prepare(
+    "SELECT month, type, SUM(amount) as total FROM transactions GROUP BY month, type ORDER BY month DESC LIMIT 24"
+  ).all();
+
+  const categoryTrends = db.prepare(
+    "SELECT month, category, SUM(amount) as total FROM transactions WHERE type = 'expense' GROUP BY month, category ORDER BY month DESC LIMIT 120"
+  ).all();
+
+  const goals = db.prepare("SELECT monthly_budget, monthly_savings FROM goals LIMIT 1").get();
+
+  const income = transactions.filter(t => t.type === "income").reduce((s, t) => s + t.amount, 0);
+  const expenses = transactions.filter(t => t.type === "expense").reduce((s, t) => s + t.amount, 0);
+
+  const prompt = `Analyze my finances for ${month}.
+
+CURRENT MONTH (${month}):
+Income: $${income.toFixed(2)} | Expenses: $${expenses.toFixed(2)} | Net: $${(income - expenses).toFixed(2)}
+
+Transactions:
+${transactions.map(t => `${t.date} | ${t.type} | ${t.category} | $${t.amount.toFixed(2)} | ${t.description}`).join("\n")}
+
+MONTHLY HISTORY (last 12 months):
+${monthlyTotals.map(r => `${r.month}: ${r.type} $${r.total.toFixed(2)}`).join("\n")}
+
+CATEGORY TRENDS:
+${categoryTrends.map(r => `${r.month} ${r.category}: $${r.total.toFixed(2)}`).join("\n")}
+
+GOALS: Monthly budget $${goals.monthly_budget}, Monthly savings target $${goals.monthly_savings}`;
+
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+
+  try {
+    const stream = anthropic.messages.stream({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 1024,
+      system: `You are a personal financial analyst. Analyze the user's spending data and provide insights in these sections:
+1. **Financial Health Summary** — one-sentence overview
+2. **Spending Patterns** — notable trends or unusual spending
+3. **Budget Adherence** — how they're tracking against their budget goal
+4. **Category Insights** — top spending categories and changes
+5. **Savings** — progress toward savings target
+6. **Recommendations** — 2-3 actionable tips
+
+Keep it under 500 words. Use AUD currency. Be specific with numbers from their data.`,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    for await (const event of stream) {
+      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+        res.write(`data: ${JSON.stringify({ type: "text", text: event.delta.text })}\n\n`);
+      }
+    }
+
+    res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
+  } catch (err) {
+    res.write(`data: ${JSON.stringify({ type: "error", error: err.message })}\n\n`);
+  }
+
+  res.end();
 });
 
 // Serve static frontend in production
