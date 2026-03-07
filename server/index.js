@@ -443,10 +443,12 @@ app.get("/api/insights", async (req, res) => {
   const month = req.query.month;
   if (!month) return res.status(400).json({ error: "month query param required" });
 
-  // Gather context
+  // Gather context — fetch all recent transactions (not just the selected month)
   const transactions = db.prepare(
-    "SELECT type, category, amount, description, date FROM transactions WHERE month = ? ORDER BY date DESC LIMIT 50"
-  ).all(month);
+    "SELECT type, category, amount, description, date, month FROM transactions ORDER BY date DESC LIMIT 200"
+  ).all();
+
+  const currentMonthTx = transactions.filter(t => t.month === month);
 
   const monthlyTotals = db.prepare(
     "SELECT month, type, SUM(amount) as total FROM transactions GROUP BY month, type ORDER BY month DESC LIMIT 24"
@@ -458,16 +460,16 @@ app.get("/api/insights", async (req, res) => {
 
   const goals = db.prepare("SELECT monthly_budget, monthly_savings FROM goals LIMIT 1").get();
 
-  const income = transactions.filter(t => t.type === "income").reduce((s, t) => s + t.amount, 0);
-  const expenses = transactions.filter(t => t.type === "expense").reduce((s, t) => s + t.amount, 0);
+  const income = currentMonthTx.filter(t => t.type === "income").reduce((s, t) => s + t.amount, 0);
+  const expenses = currentMonthTx.filter(t => t.type === "expense").reduce((s, t) => s + t.amount, 0);
 
   const customQuestion = req.query.question || "Analyze my finances";
 
   const financialContext = `CURRENT MONTH (${month}):
 Income: $${income.toFixed(2)} | Expenses: $${expenses.toFixed(2)} | Net: $${(income - expenses).toFixed(2)}
 
-Transactions:
-${transactions.map(t => `${t.date} | ${t.type} | ${t.category} | $${t.amount.toFixed(2)} | ${t.description}`).join("\n")}
+ALL RECENT TRANSACTIONS:
+${transactions.map(t => `${t.date} | ${t.month} | ${t.type} | ${t.category} | $${t.amount.toFixed(2)} | ${t.description}`).join("\n")}
 
 MONTHLY HISTORY (last 12 months):
 ${monthlyTotals.map(r => `${r.month}: ${r.type} $${r.total.toFixed(2)}`).join("\n")}
