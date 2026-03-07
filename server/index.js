@@ -461,7 +461,7 @@ app.get("/api/insights", async (req, res) => {
   const income = transactions.filter(t => t.type === "income").reduce((s, t) => s + t.amount, 0);
   const expenses = transactions.filter(t => t.type === "expense").reduce((s, t) => s + t.amount, 0);
 
-  const customQuestion = req.query.question;
+  const customQuestion = req.query.question || "Analyze my finances";
 
   const financialContext = `CURRENT MONTH (${month}):
 Income: $${income.toFixed(2)} | Expenses: $${expenses.toFixed(2)} | Net: $${(income - expenses).toFixed(2)}
@@ -477,9 +477,7 @@ ${categoryTrends.map(r => `${r.month} ${r.category}: $${r.total.toFixed(2)}`).jo
 
 GOALS: Monthly budget $${goals.monthly_budget}, Monthly savings target $${goals.monthly_savings}`;
 
-  const prompt = customQuestion
-    ? `Here is my financial data:\n\n${financialContext}\n\nMy question: ${customQuestion}`
-    : `Analyze my finances for ${month}.\n\n${financialContext}`;
+  const prompt = `Here is my financial data:\n\n${financialContext}\n\nMy question: ${customQuestion}`;
 
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
@@ -491,17 +489,7 @@ GOALS: Monthly budget $${goals.monthly_budget}, Monthly savings target $${goals.
     const stream = anthropic.messages.stream({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 1024,
-      system: customQuestion
-        ? `You are a personal financial analyst. The user will provide their financial data and ask a specific question. Answer their question using the data provided. Be specific with numbers. Use AUD currency. Keep it concise.`
-        : `You are a personal financial analyst. Analyze the user's spending data and provide insights in these sections:
-1. **Financial Health Summary** — one-sentence overview
-2. **Spending Patterns** — notable trends or unusual spending
-3. **Budget Adherence** — how they're tracking against their budget goal
-4. **Category Insights** — top spending categories and changes
-5. **Savings** — progress toward savings target
-6. **Recommendations** — 2-3 actionable tips
-
-Keep it under 500 words. Use AUD currency. Be specific with numbers from their data.`,
+      system: `You are a personal financial analyst. The user will provide their financial data and ask a question. Answer using the data provided. Be specific with numbers. Use AUD currency. Keep it concise (under 500 words). Use **bold** for section headings.`,
       messages: [{ role: "user", content: prompt }],
     });
 

@@ -1,21 +1,14 @@
-import { useState } from "react";
 import { LIGHT, DARK, getStyles } from "../constants";
 
-export default function Insights({ currentMonth, monthLabel, dark }) {
-  const [text, setText] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [done, setDone] = useState(false);
-  const [question, setQuestion] = useState("");
-
+export default function Insights({ currentMonth, monthLabel, dark, insightsState, setInsightsState }) {
   const t = dark ? DARK : LIGHT;
   const s = getStyles(dark);
 
+  const { text, loading, error, question } = insightsState;
+  const update = (patch) => setInsightsState(prev => ({ ...prev, ...patch }));
+
   const streamResponse = async (url) => {
-    setText("");
-    setError(null);
-    setLoading(true);
-    setDone(false);
+    update({ text: "", error: null, loading: true });
 
     try {
       const res = await fetch(url);
@@ -27,6 +20,7 @@ export default function Insights({ currentMonth, monthLabel, dark }) {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let accumulated = "";
 
       while (true) {
         const { done: streamDone, value } = await reader.read();
@@ -41,7 +35,8 @@ export default function Insights({ currentMonth, monthLabel, dark }) {
           try {
             const data = JSON.parse(line.slice(6));
             if (data.type === "text") {
-              setText(prev => prev + data.text);
+              accumulated += data.text;
+              setInsightsState(prev => ({ ...prev, text: accumulated }));
             } else if (data.type === "error") {
               throw new Error(data.error);
             }
@@ -51,22 +46,17 @@ export default function Insights({ currentMonth, monthLabel, dark }) {
         }
       }
 
-      setDone(true);
+      update({ loading: false });
     } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
+      update({ error: e.message, loading: false });
     }
   };
 
-  const analyze = () => {
-    streamResponse(`/api/insights?month=${encodeURIComponent(currentMonth)}`);
-  };
-
   const askQuestion = () => {
-    if (!question.trim()) return;
-    streamResponse(`/api/insights?month=${encodeURIComponent(currentMonth)}&question=${encodeURIComponent(question.trim())}`);
-    setQuestion("");
+    const q = question.trim();
+    if (!q) return;
+    update({ question: "" });
+    streamResponse(`/api/insights?month=${encodeURIComponent(currentMonth)}&question=${encodeURIComponent(q)}`);
   };
 
   return (
@@ -74,19 +64,32 @@ export default function Insights({ currentMonth, monthLabel, dark }) {
       <div style={s.card}>
         <p style={s.sectionTitle}>AI Financial Insights</p>
         <p style={{ fontSize: 13, color: t.textSecondary, marginBottom: 16, lineHeight: 1.5 }}>
-          Get AI-powered analysis of your spending patterns, budget adherence, and personalised recommendations for {monthLabel}.
+          Ask anything about your finances for {monthLabel}. Your transaction data is included automatically.
         </p>
-        <button
-          onClick={analyze}
-          disabled={loading}
-          style={{
-            ...s.btn(!loading),
-            opacity: loading ? 0.6 : 1,
-            cursor: loading ? "not-allowed" : "pointer",
-          }}
-        >
-          {loading ? "Analyzing..." : done ? "Re-analyze" : "Analyze My Finances"}
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            type="text"
+            value={question}
+            onChange={e => update({ question: e.target.value })}
+            onKeyDown={e => e.key === "Enter" && !loading && askQuestion()}
+            placeholder="e.g. Analyze my spending, How can I save more?"
+            disabled={loading}
+            style={{ ...s.input, flex: 1, opacity: loading ? 0.6 : 1 }}
+          />
+          <button
+            onClick={askQuestion}
+            disabled={!question.trim() || loading}
+            style={{
+              ...s.btn(!!question.trim() && !loading),
+              width: "auto",
+              padding: "14px 20px",
+              opacity: question.trim() && !loading ? 1 : 0.5,
+              cursor: question.trim() && !loading ? "pointer" : "not-allowed",
+            }}
+          >
+            {loading ? "..." : "Ask"}
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -107,34 +110,6 @@ export default function Insights({ currentMonth, monthLabel, dark }) {
             {loading && <span style={{ animation: "blink 1s step-end infinite", color: t.textSecondary }}>|</span>}
           </div>
           <style>{`@keyframes blink { 50% { opacity: 0; } }`}</style>
-        </div>
-      )}
-
-      {done && (
-        <div style={s.card}>
-          <p style={s.sectionTitle}>Ask a Question</p>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              type="text"
-              value={question}
-              onChange={e => setQuestion(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && askQuestion()}
-              placeholder="e.g. How can I reduce grocery spending?"
-              style={{ ...s.input, flex: 1 }}
-            />
-            <button
-              onClick={askQuestion}
-              disabled={!question.trim()}
-              style={{
-                ...s.btn(!!question.trim()),
-                width: "auto",
-                padding: "14px 20px",
-                opacity: question.trim() ? 1 : 0.5,
-              }}
-            >
-              Ask
-            </button>
-          </div>
         </div>
       )}
     </div>

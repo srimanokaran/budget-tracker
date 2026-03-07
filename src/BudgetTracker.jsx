@@ -30,6 +30,7 @@ export default function BudgetTracker() {
   const [trendsCatFilter, setTrendsCatFilter] = useState(new Set());
   const [trendsMonthFilter, setTrendsMonthFilter] = useState(new Set());
   const [dark, setDark] = useState(false);
+  const [insightsState, setInsightsState] = useState({ text: "", loading: false, error: null, question: "" });
 
   const loadMonth = useCallback(async (month) => {
     try {
@@ -327,7 +328,8 @@ export default function BudgetTracker() {
       )}
 
       {view === "insights" && (
-        <Insights currentMonth={currentMonth} monthLabel={monthLabel} dark={dark} />
+        <Insights currentMonth={currentMonth} monthLabel={monthLabel} dark={dark}
+          insightsState={insightsState} setInsightsState={setInsightsState} />
       )}
     </div>
   );
