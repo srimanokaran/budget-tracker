@@ -230,14 +230,29 @@ describe('CSV Import edge cases', () => {
 })
 
 describe('AI Insights', () => {
-  it('GET /api/insights returns 503 when ANTHROPIC_API_KEY is not set', async () => {
-    const res = await request(app).get('/api/insights?month=2025-01').set('Authorization', auth)
+  it('POST /api/insights returns 503 when ANTHROPIC_API_KEY is not set', async () => {
+    const res = await request(app)
+      .post('/api/insights')
+      .set('Authorization', auth)
+      .send({ month: '2025-01', messages: [{ role: 'user', content: 'Analyze my spending' }] })
     expect(res.status).toBe(503)
   })
 
-  it('GET /api/insights returns 400 when month param is missing', async () => {
-    const res = await request(app).get('/api/insights').set('Authorization', auth)
-    // Could be 503 (no key check first) or 400 — the handler checks key first
+  it('POST /api/insights returns 400 when month is missing', async () => {
+    const res = await request(app)
+      .post('/api/insights')
+      .set('Authorization', auth)
+      .send({ messages: [{ role: 'user', content: 'Hi' }] })
+    // Could be 503 (no key check first) or 400
+    expect([400, 503]).toContain(res.status)
+  })
+
+  it('POST /api/insights returns 400 when messages is missing', async () => {
+    const res = await request(app)
+      .post('/api/insights')
+      .set('Authorization', auth)
+      .send({ month: '2025-01' })
+    // Could be 503 (no key check first) or 400
     expect([400, 503]).toContain(res.status)
   })
 })
