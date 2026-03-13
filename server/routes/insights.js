@@ -139,8 +139,11 @@ After using a tool, briefly confirm what was done.`,
     },
   ];
 
-  // Filter messages to only include role and content (strip toolUse etc from frontend)
-  const apiMessages = messages.map(m => ({ role: m.role, content: m.content }));
+  // Build clean message history for API — assistant messages get text-only
+  // to avoid sending orphaned tool_use blocks without tool_results
+  const apiMessages = messages
+    .filter(m => m.content)
+    .map(m => ({ role: m.role, content: m.content }));
 
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
@@ -166,6 +169,7 @@ After using a tool, briefly confirm what was done.`,
       });
 
       // Process response content blocks
+      const toolResults = [];
       for (const block of response.content) {
         if (block.type === "text") {
           send({ type: "text", text: block.text });
@@ -175,16 +179,15 @@ After using a tool, briefly confirm what was done.`,
           const result = executeTool(block.name, block.input);
           send({ type: "tool_result", name: block.name, result });
 
-          // Append assistant response and tool result for continuation
-          currentMessages.push({ role: "assistant", content: response.content });
-          currentMessages.push({
-            role: "user",
-            content: [{ type: "tool_result", tool_use_id: block.id, content: JSON.stringify(result) }],
-          });
-
-          continueLoop = true;
-          break; // Process one tool at a time, then loop back
+          toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify(result) });
         }
+      }
+
+      // If there were tool calls, append all results and continue the loop
+      if (toolResults.length > 0) {
+        currentMessages.push({ role: "assistant", content: response.content });
+        currentMessages.push({ role: "user", content: toolResults });
+        continueLoop = true;
       }
     }
 
