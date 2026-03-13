@@ -83,18 +83,19 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "messages array required" });
   }
 
-  const transactions = db.prepare(
-    "SELECT type, category, amount, description, date, month FROM transactions ORDER BY date DESC LIMIT 200"
-  ).all();
+  // Current month transactions (full detail for recategorization)
+  const currentMonthTx = db.prepare(
+    "SELECT rowid, type, category, amount, description, date, month FROM transactions WHERE month = ? ORDER BY date DESC"
+  ).all(month);
 
-  const currentMonthTx = transactions.filter(t => t.month === month);
+  // Category spending summary for current month
+  const currentCatSummary = db.prepare(
+    "SELECT category, SUM(amount) as total, COUNT(*) as count FROM transactions WHERE month = ? AND type = 'expense' GROUP BY category ORDER BY total DESC"
+  ).all(month);
 
+  // Monthly totals (compact summary, not individual transactions)
   const monthlyTotals = db.prepare(
-    "SELECT month, type, SUM(amount) as total FROM transactions GROUP BY month, type ORDER BY month DESC LIMIT 24"
-  ).all();
-
-  const categoryTrends = db.prepare(
-    "SELECT month, category, SUM(amount) as total FROM transactions WHERE type = 'expense' GROUP BY month, category ORDER BY month DESC LIMIT 120"
+    "SELECT month, type, SUM(amount) as total FROM transactions GROUP BY month, type ORDER BY month DESC LIMIT 12"
   ).all();
 
   const goals = db.prepare("SELECT monthly_budget, monthly_savings FROM goals LIMIT 1").get();
@@ -105,32 +106,34 @@ router.post("/", async (req, res) => {
   const financialContext = `CURRENT MONTH (${month}):
 Income: $${income.toFixed(2)} | Expenses: $${expenses.toFixed(2)} | Net: $${(income - expenses).toFixed(2)}
 
-ALL RECENT TRANSACTIONS:
-${transactions.map(t => `[ID:${t.rowid || ""}] ${t.date} | ${t.month} | ${t.type} | ${t.category} | $${t.amount.toFixed(2)} | ${t.description}`).join("\n")}
+CURRENT MONTH SPENDING BY CATEGORY:
+${currentCatSummary.map(r => `${r.category}: $${r.total.toFixed(2)} (${r.count} transactions)`).join("\n")}
 
-MONTHLY HISTORY (last 12 months):
+CURRENT MONTH TRANSACTIONS:
+${currentMonthTx.map(t => `[ID:${t.rowid}] ${t.date} | ${t.type} | ${t.category} | $${t.amount.toFixed(2)} | ${t.description}`).join("\n")}
+
+MONTHLY HISTORY:
 ${monthlyTotals.map(r => `${r.month}: ${r.type} $${r.total.toFixed(2)}`).join("\n")}
 
-CATEGORY TRENDS:
-${categoryTrends.map(r => `${r.month} ${r.category}: $${r.total.toFixed(2)}`).join("\n")}
+GOALS: Budget $${goals.monthly_budget}/mo, Savings target $${goals.monthly_savings}/mo
+Today: ${new Date().toISOString().slice(0, 10)} | Viewing: ${month}`;
 
-GOALS: Monthly budget $${goals.monthly_budget}, Monthly savings target $${goals.monthly_savings}
-
-Today's date: ${new Date().toISOString().slice(0, 10)}
-Current month being viewed: ${month}`;
-
-  const systemPrompt = `You are a personal financial analyst and assistant. The user will provide their financial data and ask questions or request actions.
-
-Here is their financial data:
-${financialContext}
-
-Guidelines:
-- Answer using the data provided. Be specific with numbers. Use AUD currency.
-- Keep responses concise (under 500 words). Use **bold** for section headings.
-- When the user asks to add/create/log a transaction, use the create_transaction tool.
-- When the user asks to set/update budget or savings goals, use the update_goals tool.
-- When the user asks to recategorize a transaction, use the recategorize_transaction tool.
-- After using a tool, briefly confirm what was done.`;
+  // Static system instructions (cacheable) separate from dynamic financial data
+  const systemMessages = [
+    {
+      type: "text",
+      text: `You are a concise personal financial analyst. Use AUD. Be specific with numbers. Keep responses under 300 words. Use **bold** for headings.
+When asked to add/create/log a transaction, use create_transaction.
+When asked to set/change budget or savings goals, use update_goals.
+When asked to recategorize a transaction, use recategorize_transaction.
+After using a tool, briefly confirm what was done.`,
+      cache_control: { type: "ephemeral" },
+    },
+    {
+      type: "text",
+      text: financialContext,
+    },
+  ];
 
   // Filter messages to only include role and content (strip toolUse etc from frontend)
   const apiMessages = messages.map(m => ({ role: m.role, content: m.content }));
@@ -153,7 +156,7 @@ Guidelines:
       const response = await anthropic.messages.create({
         model: "claude-haiku-4-5-20251001",
         max_tokens: 1024,
-        system: systemPrompt,
+        system: systemMessages,
         tools,
         messages: currentMessages,
       });
