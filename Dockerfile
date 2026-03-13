@@ -15,7 +15,8 @@ RUN apk add --no-cache python3 make g++ && \
     npm ci --omit=dev && \
     apk del python3 make g++
 
-COPY server/index.js ./server/index.js
+COPY server/index.js server/db.js server/auth.js ./server/
+COPY server/routes ./server/routes
 COPY --from=build /app/dist ./dist
 
 ENV DATA_DIR=/app/data
