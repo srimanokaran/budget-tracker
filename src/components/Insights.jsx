@@ -65,7 +65,7 @@ export default function Insights({ currentMonth, monthLabel, dark, insightsState
                 return { ...prev, messages: msgs };
               });
             } else if (data.type === "tool_use") {
-              didUseTool = true;
+              if (data.name !== "get_month_transactions") didUseTool = true;
               toolActions.push({ type: "tool_use", name: data.name, input: data.input });
               setInsightsState(prev => {
                 const msgs = [...prev.messages];
@@ -136,9 +136,12 @@ export default function Insights({ currentMonth, monthLabel, dark, insightsState
     });
   };
 
+  const isReadOnlyTool = (name) => name === "get_month_transactions";
+
   const toolLabel = (action) => {
     if (action.type === "tool_use") {
       const labels = {
+        get_month_transactions: `Looking up ${action.input?.month || "month"}...`,
         create_transaction: "Creating transaction...",
         update_goals: "Updating goals...",
         recategorize_transaction: "Recategorizing...",
@@ -146,6 +149,7 @@ export default function Insights({ currentMonth, monthLabel, dark, insightsState
       return labels[action.name] || `Running ${action.name}...`;
     }
     if (action.type === "tool_result") {
+      if (isReadOnlyTool(action.name)) return `Loaded ${action.result?.month || "data"}`;
       return action.result?.message || "Done";
     }
     return "";

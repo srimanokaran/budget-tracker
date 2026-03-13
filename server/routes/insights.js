@@ -7,6 +7,17 @@ const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
 
 const tools = [
   {
+    name: "get_month_transactions",
+    description: "Fetch detailed transactions for a specific month. Use this to get transaction details when the user asks about a specific month's spending, needs to see individual transactions, or when you need transaction IDs for recategorization. The monthly summary in your context already has totals — only call this when you need line-item detail.",
+    input_schema: {
+      type: "object",
+      properties: {
+        month: { type: "string", description: "Month in YYYY-MM format" },
+      },
+      required: ["month"],
+    },
+  },
+  {
     name: "create_transaction",
     description: "Create a new transaction (expense or income) in the user's budget. Use this when the user asks to add, log, or record a transaction.",
     input_schema: {
@@ -34,7 +45,7 @@ const tools = [
   },
   {
     name: "recategorize_transaction",
-    description: "Change the category of an existing transaction by its ID. Use when the user asks to recategorize or move a transaction.",
+    description: "Change the category of an existing transaction by its ID. Use when the user asks to recategorize or move a transaction. Call get_month_transactions first to find the ID.",
     input_schema: {
       type: "object",
       properties: {
@@ -48,6 +59,20 @@ const tools = [
 
 function executeTool(name, input) {
   switch (name) {
+    case "get_month_transactions": {
+      const txs = db.prepare(
+        "SELECT rowid, type, category, amount, description, date FROM transactions WHERE month = ? ORDER BY date DESC"
+      ).all(input.month);
+      const catSummary = db.prepare(
+        "SELECT category, SUM(amount) as total, COUNT(*) as count FROM transactions WHERE month = ? AND type = 'expense' GROUP BY category ORDER BY total DESC"
+      ).all(input.month);
+      return {
+        success: true,
+        month: input.month,
+        transactions: txs.map(t => `[ID:${t.rowid}] ${t.date} | ${t.type} | ${t.category} | $${t.amount.toFixed(2)} | ${t.description}`),
+        categorySummary: catSummary.map(r => `${r.category}: $${r.total.toFixed(2)} (${r.count})`),
+      };
+    }
     case "create_transaction": {
       const { type, category, amount, description, date } = input;
       const month = date.slice(0, 7);
@@ -83,36 +108,14 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "messages array required" });
   }
 
-  // Current month transactions (full detail for recategorization)
-  const currentMonthTx = db.prepare(
-    "SELECT rowid, type, category, amount, description, date, month FROM transactions WHERE month = ? ORDER BY date DESC"
-  ).all(month);
-
-  // Category spending summary for current month
-  const currentCatSummary = db.prepare(
-    "SELECT category, SUM(amount) as total, COUNT(*) as count FROM transactions WHERE month = ? AND type = 'expense' GROUP BY category ORDER BY total DESC"
-  ).all(month);
-
-  // Monthly totals (compact summary, not individual transactions)
+  // Compact monthly totals only — detailed transactions fetched on demand via tool
   const monthlyTotals = db.prepare(
     "SELECT month, type, SUM(amount) as total FROM transactions GROUP BY month, type ORDER BY month DESC LIMIT 12"
   ).all();
 
   const goals = db.prepare("SELECT monthly_budget, monthly_savings FROM goals LIMIT 1").get();
 
-  const income = currentMonthTx.filter(t => t.type === "income").reduce((s, t) => s + t.amount, 0);
-  const expenses = currentMonthTx.filter(t => t.type === "expense").reduce((s, t) => s + t.amount, 0);
-
-  const financialContext = `CURRENT MONTH (${month}):
-Income: $${income.toFixed(2)} | Expenses: $${expenses.toFixed(2)} | Net: $${(income - expenses).toFixed(2)}
-
-CURRENT MONTH SPENDING BY CATEGORY:
-${currentCatSummary.map(r => `${r.category}: $${r.total.toFixed(2)} (${r.count} transactions)`).join("\n")}
-
-CURRENT MONTH TRANSACTIONS:
-${currentMonthTx.map(t => `[ID:${t.rowid}] ${t.date} | ${t.type} | ${t.category} | $${t.amount.toFixed(2)} | ${t.description}`).join("\n")}
-
-MONTHLY HISTORY:
+  const financialContext = `MONTHLY SUMMARY:
 ${monthlyTotals.map(r => `${r.month}: ${r.type} $${r.total.toFixed(2)}`).join("\n")}
 
 GOALS: Budget $${goals.monthly_budget}/mo, Savings target $${goals.monthly_savings}/mo
@@ -123,9 +126,10 @@ Today: ${new Date().toISOString().slice(0, 10)} | Viewing: ${month}`;
     {
       type: "text",
       text: `You are a concise personal financial analyst. Use AUD. Be specific with numbers. Keep responses under 300 words. Use **bold** for headings.
+You have a monthly summary in your context. For detailed transaction data, use get_month_transactions with the relevant month.
 When asked to add/create/log a transaction, use create_transaction.
 When asked to set/change budget or savings goals, use update_goals.
-When asked to recategorize a transaction, use recategorize_transaction.
+When asked to recategorize a transaction, first use get_month_transactions to find the ID, then use recategorize_transaction.
 After using a tool, briefly confirm what was done.`,
       cache_control: { type: "ephemeral" },
     },
